@@ -2,20 +2,23 @@
 """
 Module containing standard utilities for neural nets:
     - cross validation routine
-        cross_val(net, opt, epochs, X_train, y_train, k_folds, device)
+        cross_val(net, opt, epochs, mb_size, X_train, y_train, k_folds, device)
     - training routine
         train(net, epochs, optim, train_loader, device,
               loss_fn=F.binary_cross_entropy)
     - test routine
         eval(net, test_loader, device)
 """
+import numpy as np
+import torch
 import tqdm
 from sklearn.model_selection import KFold
 from torch.utils.data import DataLoader, TensorDataset
 import torch.nn.functional as F
+from copy import deepcopy
 
 
-def cross_val(net, opt, epochs, X_train, y_train, k_folds, device):
+def cross_val(net, opt, epochs, mb_size, X_train, y_train, k_folds, device):
     """
     Cross validation implementation using ´k_folds´ number of folds.
 
@@ -27,6 +30,8 @@ def cross_val(net, opt, epochs, X_train, y_train, k_folds, device):
         Optimizer object.
     epochs : int
         Number of training epochs.
+    mb_size : int
+        Mini-batch size.
     X_train : pandas DataFrame
         Training set features.
     y_train : pandas Series
@@ -138,7 +143,7 @@ def train(net, epochs, optim, train_loader, device,
         for i, (data, target) in enumerate(train_loader):
             data = data.to(device)
             target = target.to(device)
-            mb = data.size(0)
+            # mb = data.size(0)
             y_pred = net(data).reshape(-1)
 
             loss = loss_fn(y_pred, target)
@@ -146,7 +151,6 @@ def train(net, epochs, optim, train_loader, device,
             loss.backward()
             optim.step()
             running_loss += loss.item()
-            proj = y_pred.cpu() > 0.5
 
 
 def eval(net, test_loader, device):
