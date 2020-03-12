@@ -152,7 +152,7 @@ def train(net, epochs, optim, train_loader, device,
             running_loss += loss.item()
 
 
-def eval(net, test_loader, device):
+def evaluate(net, test_loader, device):
     """
     Standard test routine.
 
@@ -171,11 +171,11 @@ def eval(net, test_loader, device):
         Prediction vector.
 
     """
-    target_array = np.array([])
+
+    target_tensor = torch.Tensor().to(device)
     net.eval()
-    for i, [data] in enumerate(test_loader):
+    for i, data in enumerate(test_loader):
         data = data.to(device)
         y_pred = net(data)
-        target = y_pred.detach().cpu().numpy()
-        target_array = np.append(target_array, target)
-    return target_array
+        target_tensor = torch.cat((target_tensor, y_pred.detach()), 0)
+    return target_tensor
