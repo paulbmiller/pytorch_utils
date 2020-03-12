@@ -39,8 +39,11 @@ class Net(nn.Module):
     def add_leakyrelu(self, negative_slope=0.01, inplace=True):
         self.add_layer(nn.LeakyReLU(negative_slope, inplace))
 
+    def add_maxpool(self, kernel_size, stride):
+        self.add_layer(nn.MaxPool2d(kernel_size, stride))
+
     def add_sigmoid(self):
-        self.add_layer(nn.Sigmoid())        
+        self.add_layer(nn.Sigmoid())
 
     def add_tanh(self):
         self.add_layer(nn.Tanh())
@@ -56,7 +59,7 @@ class Net(nn.Module):
     def init_optim(self, optimizer, lr):
         if not self.optim_class:
             self.optim_class = optimizer
-            self.lr=lr
+            self.lr = lr
         self.optim = optimizer(self.parameters(), lr=lr)
 
     def get_optim(self):

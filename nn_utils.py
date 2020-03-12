@@ -11,7 +11,7 @@ Module containing standard utilities for neural nets:
 """
 import numpy as np
 import torch
-import tqdm
+from tqdm import tqdm
 from sklearn.model_selection import KFold
 from torch.utils.data import DataLoader, TensorDataset
 import torch.nn.functional as F
@@ -144,8 +144,7 @@ def train(net, epochs, optim, train_loader, device,
             data = data.to(device)
             target = target.to(device)
             # mb = data.size(0)
-            y_pred = net(data).reshape(-1)
-
+            y_pred = net(data)
             loss = loss_fn(y_pred, target)
             optim.zero_grad()
             loss.backward()
