@@ -18,9 +18,11 @@ import torch.nn.functional as F
 from copy import deepcopy
 
 
-def cross_val(net, opt, epochs, mb_size, X_train, y_train, k_folds, device):
+def cross_val_c(net, opt, epochs, mb_size, X_train, y_train, k_folds, loss_fn,
+                device):
     """
-    Cross validation implementation using ´k_folds´ number of folds.
+    Cross validation implementation using ´k_folds´ number of folds for
+    classification (uses argmax at test time).
 
     Parameters
     ----------
@@ -32,12 +34,14 @@ def cross_val(net, opt, epochs, mb_size, X_train, y_train, k_folds, device):
         Number of training epochs.
     mb_size : int
         Mini-batch size.
-    X_train : pandas DataFrame
+    X_train : numpy array
         Training set features.
-    y_train : pandas Series
+    y_train : numpy array
         Training set target vector.
     k_folds : int
         Number of cross validation folds.
+    loss_fn : torch.nn.functional
+        Loss function
     device : torch.device
         Torch device (cuda or cpu).
 
@@ -56,58 +60,67 @@ def cross_val(net, opt, epochs, mb_size, X_train, y_train, k_folds, device):
         net.load_state_dict(init_state)
         opt.load_state_dict(init_state_opt)
         train = TensorDataset(
-            torch.Tensor(np.array(X_train.loc[train_indices])),
-            torch.Tensor(np.array(y_train.loc[train_indices]))
+            torch.Tensor(np.array(X_train[train_indices])),
+            torch.Tensor(np.array(y_train[train_indices]))
         )
         val = TensorDataset(
-            torch.Tensor(np.array(X_train.loc[test_indices])),
-            torch.Tensor(np.array(y_train.loc[test_indices]))
+            torch.Tensor(np.array(X_train[test_indices])),
+            torch.Tensor(np.array(y_train[test_indices]))
         )
         train_loader = DataLoader(train, batch_size=mb_size, shuffle=False)
         val_loader = DataLoader(val, batch_size=mb_size, shuffle=False)
         net.train()
-        str_desc = 'Fold ' + str(fold_cntr+1) + " / " + str(k_folds)
-        for epoch in tqdm(range(1, epochs+1), desc=str_desc, unit=' ep'):
+        str_desc = 'Fold ' + str(fold_cntr+1) + "/" + str(k_folds)
+        training_losses = np.zeros(epochs)
+        for epoch in tqdm(range(1, epochs+1), desc=str_desc, unit='ep'):
             running_loss = 0.0
+            train_nb_samples = 0
             for i, (data, target) in enumerate(train_loader):
                 data = data.to(device)
                 target = target.to(device)
                 mb = data.size(0)
-                y_pred = net(data).reshape(-1)
-
-                loss = F.binary_cross_entropy(y_pred, target)
+                train_nb_samples += mb
+                y_pred = net(data)
+                loss = loss_fn(y_pred, target)
                 opt.zero_grad()
                 loss.backward()
                 opt.step()
                 running_loss += loss.item()
-        tqdm.write('')
+            training_losses[i-1] = running_loss / train_nb_samples
+        training_loss = running_loss
         net.eval()
         running_loss = 0.0
         right_predictions = 0
-        wrong_predictions = 0
+        total_predictions = 0
         for i, (data, target) in enumerate(val_loader):
             data = data.to(device)
             target = target.to(device)
             mb = data.size(0)
-            y_pred = net(data).reshape(-1)
+            y_pred = net(data)
 
-            loss = F.binary_cross_entropy(y_pred, target)
+            loss = loss_fn(y_pred, target)
             running_loss += loss.item()
 
-            target_bool = target == 1
-            proj = y_pred.cpu() > 0.5
-            for j in range(mb):
-                if proj[j] == target_bool[j].cpu():
-                    right_predictions += 1
-                else:
-                    wrong_predictions += 1
-        tqdm.write('Val Epoch, loss: {}, acc: {}, fold: {}'.format(
-            running_loss/(i+1),
-            100 * right_predictions / (right_predictions + wrong_predictions),
-            fold_cntr+1)
+            labels_pred = torch.argmax(y_pred, axis=1)
+            labels_target = torch.argmax(target, axis=1)
+            labels_right = labels_pred == labels_target
+            labels_right = labels_right.sum().item()
+            right_predictions += labels_right
+            total_predictions += mb
+        """
+        Output the training loss for the last epoch of training, along with
+        the validation loss, the accuracy and the fold number
+        """
+        tdqm_out = 'Val Epoch, train_loss: {:.4f}, val_loss: {:.4f}, '.format(
+            training_loss,
+            running_loss / total_predictions
         )
-        test_accs[fold_cntr] = right_predictions / (right_predictions +
-                                                    wrong_predictions)
+        tdqm_out += "acc: {:.3f}, fold: {}".format(
+            100 * right_predictions / total_predictions,
+            fold_cntr+1
+        )
+        tqdm.write(tdqm_out)
+        test_accs[fold_cntr] = right_predictions / total_predictions
         fold_cntr += 1
     return test_accs
 
@@ -138,6 +151,7 @@ def train(net, epochs, optim, train_loader, device,
 
     """
     net.train()
+    losses = []
     for epoch in tqdm(range(1, epochs+1), desc='Training', unit=' ep'):
         running_loss = 0.0
         for i, (data, target) in enumerate(train_loader):
@@ -149,7 +163,8 @@ def train(net, epochs, optim, train_loader, device,
             optim.zero_grad()
             loss.backward()
             optim.step()
-            running_loss += loss.item()
+            running_loss += loss.item() / len(target)
+        losses.append(running_loss)
 
 
 def evaluate(net, test_loader, device):
